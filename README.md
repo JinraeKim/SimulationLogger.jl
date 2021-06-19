@@ -1,6 +1,117 @@
 # SimulationLogger
 SimulationLogger.jl is a package providing convenient logging tools for [DifferentialEquations.jl](https://github.com/SciML/DifferentialEquations.jl).
 
+## Packages related to SimulationLogger.jl
+- [FlightSims.jl](https://github.com/JinraeKim/FlightSims.jl) is a general-purpose numerical simulator,
+and it uses SimulationLogger.jl as a main loggin tool. You can find real examples about **how to use this package** in FlightSims.jl.
+
+# TL; DR: example code
+## Example 1: typical usage (see [FlightSims.jl](https://github.com/JinraeKim/FlightSims.jl) for details)
+
+```julia
+using FlightSims
+const FS = FlightSims
+using DifferentialEquations
+using LinearAlgebra
+using Plots
+
+
+function test()
+    # linear system
+    A = [0 1;
+         0 0]
+    B = [0;
+         1]
+    n, m = 2, 1
+    env = LinearSystemEnv(A, B)  # exported from FlightSims
+    x0 = State(env)([1.0, 2.0])
+    p0 = zero.(x0)  # auxiliary parameter
+    # optimal control
+    Q = Matrix(I, n, n)
+    R = Matrix(I, m, m)
+    lqr = LQR(A, B, Q, R)  # exported from FlightSims
+    u_lqr = FS.OptimalController(lqr)  # (x, p, t) -> -K*x; minimise J = ∫ (x' Q x + u' R u) from 0 to ∞
+
+    # simulation
+    tf = 10.0
+    Δt = 0.01
+    affect!(integrator) = integrator.p = copy(integrator.u)  # auxiliary callback
+    cb = PeriodicCallback(affect!, Δt; initial_affect=true)
+    @Loggable function dynamics!(dx, x, p, t; u)
+        @onlylog p  # activate this line only when logging data
+        @log state = x
+        @log input = u
+        # nested logging
+        @nested_log :linear state_square = x .^ 2  # to put additional data into the same symbol (:linear)
+        @nested_log :linear Dynamics!(env)(dx, x, p, t; u=u)
+    end
+    prob, df = sim(
+                   x0,  # initial condition
+                   # apply_inputs(Dynamics!(env); u=u_lqr),  # dynamics with input of LQR
+                   apply_inputs(dynamics!; u=u_lqr),  # dynamics with input of LQR
+                   p0;
+                   tf=tf,  # final time
+                   callback=cb,
+                   savestep=Δt,
+                  )
+    p_x = plot(df.time, hcat(df.state...)';
+               title="state variable", label=["x1" "x2"], color=[:black :black], lw=1.5,
+              )  # Plots
+    plot!(p_x, df.time, hcat(df.p...)';
+          ls=:dash, label="param", color=[:red :orange], lw=1.5
+         )
+    savefig("figures/x_lqr.png")
+    plot(df.time, hcat(df.input...)'; title="control input", label="u")  # Plots
+    savefig("figures/u_lqr.png")
+    df
+end
+```
+![ex_screenshot](./figures/x_lqr.png)
+![ex_screenshot](./figures/u_lqr.png)
+
+## Example 2: low-level usage
+```julia
+using SimulationLogger
+using DifferentialEquations
+using Transducers
+using Plots
+
+
+function test()
+    @Loggable function dynamics!(dx, x, p, t)
+        @log x
+        @log u = -x
+        @onlylog state = x
+        @onlylog input = u
+        dx .= u
+    end
+    t0, tf = 0.0, 10.0
+    Δt = 0.01
+    log_func(x, t, integrator::DiffEqBase.DEIntegrator; kwargs...) = dynamics!(zero.(x), copy(x), integrator.p, t, __LOG_INDICATOR__(); kwargs...)
+    saved_values = SavedValues(Float64, Dict)
+    cb = SavingCallback(log_func, saved_values;
+                        saveat=t0:Δt:tf)
+    # # sim
+    x0 = [1, 2, 3]
+    tspan = (t0, tf)
+    prob = ODEProblem(
+                      dynamics!, x0, tspan;
+                      callback=cb,
+                     )
+    _ = solve(prob)
+    ts = saved_values.t
+    xs = saved_values.saveval |> Map(datum -> datum[:state]) |> collect
+    us = saved_values.saveval |> Map(datum -> datum[:input]) |> collect
+    p_x = plot(ts, hcat(xs...)')
+    p_u = plot(ts, hcat(us...)')
+    dir_log = "figures"
+    mkpath(dir_log)
+    savefig(p_x, joinpath(dir_log, "state.png"))
+end
+```
+![ex_screenshot](./figures/state.png)
+
+
 # Main macros
 ## `@Loggable`
 `@Loggable` is a macro that makes an ODE function *loggable*.
@@ -71,51 +182,9 @@ This macro logs (possibly) multiple data in a nested sense.
 - `__LOGGER_DICT__` is a privileged name to contain variables annotated by logging macros. **DO NOT USE THIS NAME IN USUAL CASE**.
 - This package supports only [**in-place** method](https://diffeq.sciml.ai/stable/basics/problem/#In-place-vs-Out-of-Place-Function-Definition-Forms) of DifferentialEquations.jl.
 
-# Example codes
-```julia
-using SimulationLogger
-using DifferentialEquations
-using Transducers
-using Plots
-
-
-function test()
-    @Loggable function dynamics!(dx, x, p, t)
-        @log x
-        @log u = -x
-        @onlylog state = x
-        @onlylog input = u
-        dx .= u
-    end
-    t0, tf = 0.0, 10.0
-    Δt = 0.01
-    log_func(x, t, integrator::DiffEqBase.DEIntegrator; kwargs...) = dynamics!(zero.(x), copy(x), integrator.p, t, __LOG_INDICATOR__(); kwargs...)
-    saved_values = SavedValues(Float64, Dict)
-    cb = SavingCallback(log_func, saved_values;
-                        saveat=t0:Δt:tf)
-    # # sim
-    x0 = [1, 2, 3]
-    tspan = (t0, tf)
-    prob = ODEProblem(
-                      dynamics!, x0, tspan;
-                      callback=cb,
-                     )
-    _ = solve(prob)
-    ts = saved_values.t
-    xs = saved_values.saveval |> Map(datum -> datum[:state]) |> collect
-    us = saved_values.saveval |> Map(datum -> datum[:input]) |> collect
-    p_x = plot(ts, hcat(xs...)')
-    p_u = plot(ts, hcat(us...)')
-    dir_log = "figures"
-    mkpath(dir_log)
-    savefig(p_x, joinpath(dir_log, "state.png"))
-end
-```
-![ex_screenshot](./figures/state.png)
-
 
 
 # Notes
-- This package is inspired by [SimulationLogs.jl](https://github.com/jonniedie/SimulationLogs.jl).
-In several discussions in JuliaLang, including [the original question](https://discourse.julialang.org/t/differentialequations-jl-saving-data-without-redundant-calculation-of-control-inputs/62559/3) and [the idea of this package](https://discourse.julialang.org/t/make-a-variable-as-a-global-variable-within-a-function/63067/21),
-I desire to find a way to 1) log data without repeating the same code within differential equation (DE) functions, and 2) deal with stochastic parameter updates.
+- This basic form of this macro is inspired by [SimulationLogs.jl](https://github.com/jonniedie/SimulationLogs.jl). But there are some differences. For example, `@log` in this package is based on [SavingCallback](https://diffeq.sciml.ai/stable/features/callback_library/#saving_callback), while `@log` in [SimulationLogs.jl](https://github.com/jonniedie/SimulationLogs.jl) will save data in the sense of postprocessing.
+There are two main differences: this package can 1) log data without repeating the same code within differential equation (DE) functions, and 2) deal with stochastic parameter updates.
+For more details, see [the original question](https://discourse.julialang.org/t/differentialequations-jl-saving-data-without-redundant-calculation-of-control-inputs/62559/3) and [the idea of this package](https://discourse.julialang.org/t/make-a-variable-as-a-global-variable-within-a-function/63067/21).
