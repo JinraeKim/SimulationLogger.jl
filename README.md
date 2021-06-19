@@ -3,7 +3,7 @@ SimulationLogger.jl is a package providing convenient logging tools for [Differe
 
 ## Packages related to SimulationLogger.jl
 - [FlightSims.jl](https://github.com/JinraeKim/FlightSims.jl) is a general-purpose numerical simulator,
-and it uses SimulationLogger.jl as a main loggin tool. You can find real examples about **how to use this package** in FlightSims.jl.
+and it uses SimulationLogger.jl as a main logging tool. You can find real examples about **how to use this package** in FlightSims.jl.
 
 # TL; DR: example code
 ## Example 1: typical usage (see [FlightSims.jl](https://github.com/JinraeKim/FlightSims.jl) for details)
@@ -163,7 +163,7 @@ end
 ```
 
 ## `@onlylog`
-This macro logs the annotated variable, and also executes the followed expression *only when loggin data*.
+This macro logs the annotated variable, and also executes the followed expression *only when logging data*.
 ### Example
 ```julia
 @Loggable function dynamics!(dx, x, p, t)
@@ -186,5 +186,5 @@ This macro logs (possibly) multiple data in a nested sense.
 
 # Notes
 - This basic form of this macro is inspired by [SimulationLogs.jl](https://github.com/jonniedie/SimulationLogs.jl). But there are some differences. For example, `@log` in this package is based on [SavingCallback](https://diffeq.sciml.ai/stable/features/callback_library/#saving_callback), while `@log` in [SimulationLogs.jl](https://github.com/jonniedie/SimulationLogs.jl) will save data in the sense of postprocessing.
-There are two main differences: this package can 1) log data without repeating the same code within differential equation (DE) functions, and 2) deal with stochastic parameter updates.
+There are two main advantages: this package can 1) log data without repeating the same code within differential equation (DE) functions, and 2) deal with stochastic parameter updates.
 For more details, see [the original question](https://discourse.julialang.org/t/differentialequations-jl-saving-data-without-redundant-calculation-of-control-inputs/62559/3) and [the idea of this package](https://discourse.julialang.org/t/make-a-variable-as-a-global-variable-within-a-function/63067/21).
