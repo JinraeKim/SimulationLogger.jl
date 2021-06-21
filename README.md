@@ -162,7 +162,30 @@ end
 ## `@nested_log`
 This macro logs (possibly) multiple data in a nested sense.
 ### Example
-- [ ] Add an example
+1. nested log with specified name
+```julia
+@Loggable function dynamics!(dx, x, p, t)
+    @log state = x  # __LOGGER_DICT__[:state] = x
+    dx .= -x
+end
+
+@Loggable function feedback_dynamics!(dx, x, p, t)
+    @log time = t  # __LOGGER_DICT__[:time] = t
+    @nested_log :linear dynamics!(dx, x, p, t)  # __LOGGER_DICT__[:linear] = Dict(:state => x)
+end
+```
+2. nested log with no name
+```julia
+@Loggable function dynamics!(dx, x, p, t)
+    @log state = x  # __LOGGER_DICT__[:state] = x
+    dx .= -x
+end
+
+@Loggable function feedback_dynamics!(dx, x, p, t)
+    @log time = t  # __LOGGER_DICT__[:time] = t
+    @nested_log dynamics!(dx, x, p, t)  # __LOGGER_DICT__[:state] = x
+end
+```
 
 # NOTICE
 - `__LOGGER_DICT__` is a privileged name to contain variables annotated by logging macros. **DO NOT USE THIS NAME IN USUAL CASE**.

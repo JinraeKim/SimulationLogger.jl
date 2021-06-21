@@ -6,16 +6,20 @@ using Test
 
 
 function test()
-    @Loggable function dynamics!(dx, x, p, t)
-        @log x
-        @log u = -x
-        @onlylog state = x
-        @onlylog input = u
+    @Loggable function dynamics!(dx, x, p, t; u)
+        @onlylog state = x  # __LOGGER_DICT__[:state] = x
+        @onlylog input = u  # __LOGGER_DICT__[:input] = u
         dx .= u
     end
-    t0, tf = 0.0, 10.0
+    @Loggable function feedback_dynamics!(dx, x, p, t)
+        @onlylog time = t  # __LOGGER_DICT__[:time] = t
+        @log x  # __LOGGER_DICT__[:x] = x
+        @log u = -x  # __LOGGER_DICT__[:u] = -x
+        @nested_log :linear dynamics!(dx, x, p, t; u=u)
+    end
+    t0, tf = 0.0, 1.0
     Δt = 0.01
-    log_func(x, t, integrator::DiffEqBase.DEIntegrator; kwargs...) = dynamics!(zero.(x), copy(x), integrator.p, t, __LOG_INDICATOR__(); kwargs...)
+    log_func(x, t, integrator::DiffEqBase.DEIntegrator; kwargs...) = feedback_dynamics!(zero.(x), copy(x), integrator.p, t, __LOG_INDICATOR__(); kwargs...)
     saved_values = SavedValues(Float64, Dict)
     cb = SavingCallback(log_func, saved_values;
                         saveat=t0:Δt:tf)
@@ -23,15 +27,15 @@ function test()
     x0 = [1, 2, 3]
     tspan = (t0, tf)
     prob = ODEProblem(
-                      dynamics!, x0, tspan;
+                      feedback_dynamics!, x0, tspan;
                       callback=cb,
                      )
     _ = solve(prob)
     ts = saved_values.t
     xs = saved_values.saveval |> Map(datum -> datum[:x]) |> collect
     us = saved_values.saveval |> Map(datum -> datum[:u]) |> collect
-    states = saved_values.saveval |> Map(datum -> datum[:state]) |> collect
-    inputs = saved_values.saveval |> Map(datum -> datum[:input]) |> collect
+    states = saved_values.saveval |> Map(datum -> datum[:linear][:state]) |> collect
+    inputs = saved_values.saveval |> Map(datum -> datum[:linear][:input]) |> collect
     @test xs == states
     @test us == inputs
     p_x = plot(ts, hcat(xs...)')

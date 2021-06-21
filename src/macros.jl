@@ -43,13 +43,8 @@ macro Loggable(defun)
     push!(def[:args], :(__log_indicator::__LOG_INDICATOR__))
     def[:body] = quote
         __LOGGER_DICT__ = @isdefined($(:__LOGGER_DICT__)) ? __LOGGER_DICT__ : Dict()
-        # if @isdefined($(:__LOGGER_DICT__))
-        #     $(def[:args][end-3]) = deepcopy($(def[:args][end-3]))  # dx, x, p, t, __log_indicator or x, p, t, __log_indicator -> x (copy for view issue: https://diffeq.sciml.ai/stable/features/callback_library/#Constructor-5)
-        # else
-        #     $(def[:args][end-2]) = deepcopy($(def[:args][end-2]))  # dx, x, p, t or x, p, t -> x (copy for view issue: https://diffeq.sciml.ai/stable/features/callback_library/#Constructor-5)
-        # end
         $(_body.args...)  # remove the last line, return, to return __LOGGER_DICT__ 
-        __LOGGER_DICT__  # Dictionary (see `sim`; just a convention)
+        __LOGGER_DICT__  # return a Dict
     end
     res = quote
         $(MacroTools.combinedef(_def))
@@ -184,12 +179,13 @@ end
 
 macro nested_log(expr)
     if expr.head == :call
+        _expr = deepcopy(expr)
+        push!(expr.args, :(__LOG_INDICATOR__()))
         res = quote
             if @isdefined($:__LOGGER_DICT__)
-                __TMP_DICT__ = $expr
-                merge(__LOGGER_DICT__, __TMP_DICT__)
+                __LOGGER_DICT__ = merge(__LOGGER_DICT__, $expr)
             else
-                $expr
+                $_expr
             end
         end
         esc(res)
