@@ -9,47 +9,61 @@ and it uses SimulationLogger.jl as a main loggin tool. You can find real example
 ## Example 1: typical usage (see [FlightSims.jl](https://github.com/JinraeKim/FlightSims.jl) for details)
 
 ```julia
-using SimulationLogger
+using FlightSims
+const FS = FlightSims
 using DifferentialEquations
-using Transducers
+using LinearAlgebra
 using Plots
 using Test
 
 
 function test()
-    @Loggable function dynamics!(dx, x, p, t)
-        @log x
-        @log u = -x
-        @onlylog state = x
-        @onlylog input = u
-        dx .= u
-    end
-    t0, tf = 0.0, 10.0
+    # linear system
+    A = [0 1;
+         0 0]
+    B = [0;
+         1]
+    n, m = 2, 1
+    env = LinearSystemEnv(A, B)  # exported from FlightSims
+    x0 = State(env)([1.0, 2.0])
+    p0 = zero.(x0)  # auxiliary parameter
+    # optimal control
+    Q = Matrix(I, n, n)
+    R = Matrix(I, m, m)
+    lqr = LQR(A, B, Q, R)  # exported from FlightSims
+    u_lqr = FS.OptimalController(lqr)  # (x, p, t) -> -K*x; minimise J = ∫ (x' Q x + u' R u) from 0 to ∞
+
+    # simulation
+    tf = 10.0
     Δt = 0.01
-    log_func(x, t, integrator::DiffEqBase.DEIntegrator; kwargs...) = dynamics!(zero.(x), copy(x), integrator.p, t, __LOG_INDICATOR__(); kwargs...)
-    saved_values = SavedValues(Float64, Dict)
-    cb = SavingCallback(log_func, saved_values;
-                        saveat=t0:Δt:tf)
-    # # sim
-    x0 = [1, 2, 3]
-    tspan = (t0, tf)
-    prob = ODEProblem(
-                      dynamics!, x0, tspan;
-                      callback=cb,
-                     )
-    _ = solve(prob)
-    ts = saved_values.t
-    xs = saved_values.saveval |> Map(datum -> datum[:x]) |> collect
-    us = saved_values.saveval |> Map(datum -> datum[:u]) |> collect
-    states = saved_values.saveval |> Map(datum -> datum[:state]) |> collect
-    inputs = saved_values.saveval |> Map(datum -> datum[:input]) |> collect
-    @test xs == states
-    @test us == inputs
-    p_x = plot(ts, hcat(xs...)')
-    p_u = plot(ts, hcat(us...)')
-    dir_log = "figures"
-    mkpath(dir_log)
-    savefig(p_x, joinpath(dir_log, "state.png"))
+    affect!(integrator) = integrator.p = copy(integrator.u)  # auxiliary callback funciton
+    cb = PeriodicCallback(affect!, Δt; initial_affect=true)  # auxiliary callback
+    @Loggable function dynamics!(dx, x, p, t; u)
+        @onlylog p  # activate this line only when logging data
+        @log x
+        @log u
+        @nested_log Dynamics!(env)(dx, x, p, t; u=u)  # exported `state` and `input` from `Dynamics!(env)`
+    end
+    prob, df = sim(
+                   x0,  # initial condition
+                   apply_inputs(dynamics!; u=u_lqr),  # dynamics with input of LQR
+                   p0;
+                   tf=tf,  # final time
+                   callback=cb,
+                   savestep=Δt,
+                  )
+    @test df.x == df.state
+    @test df.u == df.input
+    p_x = plot(df.time, hcat(df.state...)';
+               title="state variable", label=["x1" "x2"], color=[:black :black], lw=1.5,
+              )  # Plots
+    plot!(p_x, df.time, hcat(df.p...)';
+          ls=:dash, label="param", color=[:red :orange], lw=1.5
+         )
+    savefig("figures/x_lqr.png")
+    plot(df.time, hcat(df.input...)'; title="control input", label="u")  # Plots
+    savefig("figures/u_lqr.png")
+    df
 end
 ```
 ![ex_screenshot](./figures/x_lqr.png)
