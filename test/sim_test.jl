@@ -2,6 +2,7 @@ using SimulationLogger
 using DifferentialEquations
 using Transducers
 using Plots
+using Test
 
 
 function test()
@@ -27,8 +28,12 @@ function test()
                      )
     _ = solve(prob)
     ts = saved_values.t
-    xs = saved_values.saveval |> Map(datum -> datum[:state]) |> collect
-    us = saved_values.saveval |> Map(datum -> datum[:input]) |> collect
+    xs = saved_values.saveval |> Map(datum -> datum[:x]) |> collect
+    us = saved_values.saveval |> Map(datum -> datum[:u]) |> collect
+    states = saved_values.saveval |> Map(datum -> datum[:state]) |> collect
+    inputs = saved_values.saveval |> Map(datum -> datum[:input]) |> collect
+    @test xs == states
+    @test us == inputs
     p_x = plot(ts, hcat(xs...)')
     p_u = plot(ts, hcat(us...)')
     dir_log = "figures"
