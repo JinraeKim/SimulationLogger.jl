@@ -84,7 +84,7 @@ Otherwise, @log(`expr`) will add a variable to `__LOGGER_DICT__` based on `expr`
 and also evaluate given experssion `expr`.
 """
 macro log(__LOGGER_DICT__, expr)
-    return if expr isa Symbol
+    return if expr isa Symbol  # @log x
         quote
             local val = $(esc(expr))
             local var_name = $((expr,))[1]
@@ -93,7 +93,7 @@ macro log(__LOGGER_DICT__, expr)
             nothing
         end
     elseif expr.head == :(=)
-        if expr.args[1] isa Expr && expr.args[1].head == :tuple
+        if expr.args[1] isa Expr && expr.args[1].head == :tuple  # @log x, y = a, b
             quote
                 local vals = $(esc(expr.args[2]))
                 local var_names = $(esc(expr.args[1].args))
@@ -103,7 +103,7 @@ macro log(__LOGGER_DICT__, expr)
                 end
                 $(esc(expr))
             end
-        else
+        else  # @log x = a
             quote
                 local val = $(esc(expr.args[2]))
                 local var_name = $((expr.args[1],))[1]
@@ -111,6 +111,16 @@ macro log(__LOGGER_DICT__, expr)
                 haskey(logger_dict, var_name) ? error("Already defined key: $(var_name)") : setindex!(logger_dict, val, var_name)
                 $(esc(expr))
             end
+        end
+    elseif expr.args isa Array  # @log x, y
+        quote
+            local vals = $(esc(expr))
+            local var_names = $(esc((expr.args)))
+            local logger_dict = $(esc(__LOGGER_DICT__))
+            for (var_name, val) in zip(var_names, vals)
+                haskey(logger_dict, var_name) ? error("Already defined key: $(var_name)") : setindex!(logger_dict, val, var_name)
+            end
+            $(esc(expr))
         end
     else
         :(error("To log a variable, use either one of forms: `@log val` or `@log var_name = val`"))
