@@ -47,9 +47,9 @@ macro Loggable(defun)
         __LOGGER_DICT__  # return a Dict
     end
     res = quote
-        $(MacroTools.combinedef(_def))
-        $(MacroTools.combinedef(def))
-        $(def[:name])
+        $(MacroTools.combinedef(_def))  # the original method
+        $(MacroTools.combinedef(def))  # the modified method
+        $(def[:name])  # return methods
     end
     esc(res)
 end
