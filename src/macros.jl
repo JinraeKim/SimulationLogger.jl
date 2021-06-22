@@ -161,25 +161,34 @@ will log data from `dynamics!(dx.sub, x.sub, p.sub, t)` as
 """
 macro nested_log(symbol, expr)
     if expr.head == :call
-        _expr = deepcopy(expr)
         push!(expr.args, :(__LOG_INDICATOR__()))
         res = quote
             if @isdefined($:__LOGGER_DICT__)
                 haskey(__LOGGER_DICT__, $symbol) ? error("Already defined key: $(symbol)") : setindex!(__LOGGER_DICT__, $expr, $symbol)
             else
-                $_expr
+                $expr
             end
         end
         esc(res)
-    elseif expr.head == :(=)
-        _expr = deepcopy(expr)
+    elseif expr.head == :(=)  # @nested_log env_name x = a  or  @nested_log env_name x, y = a, b
         res = quote
             if @isdefined($:__LOGGER_DICT__)
                 __TMP_DICT__ = Dict()
                 @log(__TMP_DICT__, $expr)
                 haskey(__LOGGER_DICT__, $symbol) ? merge(__LOGGER_DICT__[$symbol], __TMP_DICT__) : setindex!(__LOGGER_DICT__, __TMP_DICT__, $symbol)
             else
-                $_expr
+                $expr
+            end
+        end
+        esc(res)
+    elseif expr.args isa Array  # @nested_log env_name a, b
+        res = quote
+            if @isdefined($:__LOGGER_DICT__)
+                __TMP_DICT__ = Dict()
+                @log(__TMP_DICT__, $expr)
+                haskey(__LOGGER_DICT__, $symbol) ? merge(__LOGGER_DICT__[$symbol], __TMP_DICT__) : setindex!(__LOGGER_DICT__, __TMP_DICT__, $symbol)
+            else
+                $expr
             end
         end
         esc(res)
@@ -190,13 +199,12 @@ end
 
 macro nested_log(expr)
     if expr.head == :call
-        _expr = deepcopy(expr)
         push!(expr.args, :(__LOG_INDICATOR__()))
         res = quote
             if @isdefined($:__LOGGER_DICT__)
                 __LOGGER_DICT__ = merge(__LOGGER_DICT__, $expr)
             else
-                $_expr
+                $expr
             end
         end
         esc(res)
@@ -207,5 +215,4 @@ end
 
 function error_invalid_expr_head()
     error("Invalid expression head")
-    # error("Call the ODE function of a sub-environment, e.g., `@nested_log :env_name dynamics!(dx.sub, x.sub, p.sub, t)`")
 end
