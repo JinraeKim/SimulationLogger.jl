@@ -40,13 +40,13 @@ function test()
     cb = PeriodicCallback(affect!, Δt; initial_affect=true)  # auxiliary callback
     @Loggable function dynamics!(dx, x, p, t; u)
         @onlylog p  # activate this line only when logging data
-        @log x
-        @log u
+        u = u_lqr(x, p, t)
+        @log x, u
         @nested_log Dynamics!(env)(dx, x, p, t; u=u)  # exported `state` and `input` from `Dynamics!(env)`
     end
     prob, df = sim(
                    x0,  # initial condition
-                   apply_inputs(dynamics!; u=u_lqr),  # dynamics with input of LQR
+                   dynamics!,  # dynamics with input of LQR
                    p0;
                    tf=tf,  # final time
                    callback=cb,
@@ -85,8 +85,9 @@ function test()
     end
     @Loggable function feedback_dynamics!(dx, x, p, t)
         @onlylog time = t  # __LOGGER_DICT__[:time] = t
-        @log x  # __LOGGER_DICT__[:x] = x
+        @log x, t  # __LOGGER_DICT__[:x] = x
         @log u = -x  # __LOGGER_DICT__[:u] = -x
+        @nested_log :linear x
         @nested_log :linear dynamics!(dx, x, p, t; u=u)
     end
     t0, tf = 0.0, 10.0
@@ -106,12 +107,14 @@ function test()
                       callback=cb,
                      )
     _ = solve(prob)
-    times = saved_values.saveval |> Map(datum -> datum[:time]) |> collect
-    ts = saved_values.t
+    @show saved_values.saveval
+    ts = saved_values.saveval |> Map(datum -> datum[:t]) |> collect
     xs = saved_values.saveval |> Map(datum -> datum[:x]) |> collect
     us = saved_values.saveval |> Map(datum -> datum[:u]) |> collect
+    times = saved_values.saveval |> Map(datum -> datum[:time]) |> collect
     states = saved_values.saveval |> Map(datum -> datum[:linear][:state]) |> collect
     inputs = saved_values.saveval |> Map(datum -> datum[:linear][:input]) |> collect
+    @test ts == saved_values.t
     @test ts == times
     @test xs == states
     @test us == inputs
