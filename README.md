@@ -142,7 +142,7 @@ end
 `@Loggable` generates additional method for the generic function of the annotated function definition.
 The additional method receives `__log__indicator__::__LOG_INDICATOR__` as the last argument (other arguments are the same as the original function definition).
 ### Notice
-- This macro should be used in front of "function definition". For example,
+- This macro is supposed to be used in front of "function definition". For example,
 ```julia
 @Loggable function dynamics!(dx, x, p, t)
     dx .= -x
@@ -153,21 +153,6 @@ is good.
 @Loggable dynamics! = (dx, x, p, t) -> dx .= -x
 ```
 may not work properly.
-- Functions annotated by `@Loggable` **MUST NOT** have `return` keyword. For example,
-```julia
-@Loggable function dynamics!(dx, x, p, t)
-    dx .= -x
-    nothing
-end
-```
-works fine, but the logging functionality with `return`, for example,
-```julia
-@Loggable function dynamics!(dx, x, p, t)
-    dx .= -x
-    return nothing
-end
-```
-may behave poorly.
 ## `@log`
 This macro logs the annotated variable, and also executes the followed expression when *both solving DEProblem and logging data*.
 ### Example
