@@ -6,6 +6,38 @@ Helper struct to specify a method as logging tool.
 struct __LOG_INDICATOR__
 end
 
+
+"""
+# Notes
+```julia
+x = [ Dict("d1"=>"A1")
+        Dict("d1b"=>Dict("d2a"=>"B1"))
+         Dict("d1b"=>Dict("d2b"=>"C1"))
+          Dict("d1b"=>Dict("d2c"=>Dict("d3a"=>"D1")))
+           Dict("d1b"=>Dict("d2c"=>Dict("d3b"=>"E1")))]
+
+julia> recursive_merge(x...) # with your last x
+Dict{String,Any} with 2 entries:
+  "d1"  => "A1"
+  "d1b" => Dict{String,Any}("d2b"=>"C1","d2a"=>"B1","d2c"=>Dict("d3b"=>"E1","d3a"=>"D1"))
+```
+# References
+https://discourse.julialang.org/t/multi-layer-dict-merge/27261/2?u=ihany
+"""
+function recursive_merge(x::AbstractDict...)
+    merge(recursive_merge, x...)
+end
+function recursive_merge(x...)
+    error("Invalid recursive_merge; did you assign values with the same key?
+          For example,
+          ```julia
+          @nested_log :values x = 1
+          @nested_log :values x = 2
+          ```
+          Otherwise, please report an issue.")
+end
+
+
 """
     @Loggable(defun)
 
@@ -43,17 +75,13 @@ macro Loggable(defun)
     push!(def[:args], :(__log_indicator::__LOG_INDICATOR__))
     def[:body] = quote
         __LOGGER_DICT__ = @isdefined($(:__LOGGER_DICT__)) ? __LOGGER_DICT__ : Dict()
-        # if @isdefined($(:__LOGGER_DICT__))
-        #     $(def[:args][end-3]) = deepcopy($(def[:args][end-3]))  # dx, x, p, t, __log_indicator or x, p, t, __log_indicator -> x (copy for view issue: https://diffeq.sciml.ai/stable/features/callback_library/#Constructor-5)
-        # else
-        #     $(def[:args][end-2]) = deepcopy($(def[:args][end-2]))  # dx, x, p, t or x, p, t -> x (copy for view issue: https://diffeq.sciml.ai/stable/features/callback_library/#Constructor-5)
-        # end
         $(_body.args...)  # remove the last line, return, to return __LOGGER_DICT__ 
-        __LOGGER_DICT__  # Dictionary (see `sim`; just a convention)
+        __LOGGER_DICT__  # return a Dict
     end
     res = quote
-        $(MacroTools.combinedef(_def))
-        $(MacroTools.combinedef(def))
+        $(MacroTools.combinedef(_def))  # the original method
+        $(MacroTools.combinedef(def))  # the modified method
+        $(def[:name])  # return methods
     end
     esc(res)
 end
@@ -89,7 +117,7 @@ Otherwise, @log(`expr`) will add a variable to `__LOGGER_DICT__` based on `expr`
 and also evaluate given experssion `expr`.
 """
 macro log(__LOGGER_DICT__, expr)
-    return if expr isa Symbol
+    return if expr isa Symbol  # @log x
         quote
             local val = $(esc(expr))
             local var_name = $((expr,))[1]
@@ -98,7 +126,7 @@ macro log(__LOGGER_DICT__, expr)
             nothing
         end
     elseif expr.head == :(=)
-        if expr.args[1] isa Expr && expr.args[1].head == :tuple
+        if expr.args[1] isa Expr && expr.args[1].head == :tuple  # @log x, y = a, b
             quote
                 local vals = $(esc(expr.args[2]))
                 local var_names = $(esc(expr.args[1].args))
@@ -108,7 +136,7 @@ macro log(__LOGGER_DICT__, expr)
                 end
                 $(esc(expr))
             end
-        else
+        else  # @log x = a
             quote
                 local val = $(esc(expr.args[2]))
                 local var_name = $((expr.args[1],))[1]
@@ -116,6 +144,16 @@ macro log(__LOGGER_DICT__, expr)
                 haskey(logger_dict, var_name) ? error("Already defined key: $(var_name)") : setindex!(logger_dict, val, var_name)
                 $(esc(expr))
             end
+        end
+    elseif expr.args isa Array  # @log x, y
+        quote
+            local vals = $(esc(expr))
+            local var_names = $(esc((expr.args)))
+            local logger_dict = $(esc(__LOGGER_DICT__))
+            for (var_name, val) in zip(var_names, vals)
+                haskey(logger_dict, var_name) ? error("Already defined key: $(var_name)") : setindex!(logger_dict, val, var_name)
+            end
+            $(esc(expr))
         end
     else
         :(error("To log a variable, use either one of forms: `@log val` or `@log var_name = val`"))
@@ -138,7 +176,7 @@ macro onlylog(expr)
 end
 
 """
-    @onlylog(symbol, expr)
+    @nested_log(symbol, expr)
 
 A macro that enables us to log data in a nested sense.
 # Examples
@@ -152,32 +190,90 @@ will log data from `dynamics!(dx.sub, x.sub, p.sub, t)` as
 ```julia
 @nested_log :subsystem state = x
 ```
+
+# NOTICE
+If you assign values with the two same keys, it will yield an error looks like:
+```julia
+ERROR: MethodError: no method matching recursive_merge(::Int64, ::Int64)
+```
 """
 macro nested_log(symbol, expr)
-    if expr.head == :call
-        _expr = deepcopy(expr)
-        push!(expr.args, :(__LOG_INDICATOR__()))
-        res = quote
-            if @isdefined($:__LOGGER_DICT__)
-                __LOGGER_DICT__[$symbol] = haskey(__LOGGER_DICT__, $symbol) ? merge(__LOGGER_DICT__[$symbol], $expr) : $expr
-            else
-                $_expr
-            end
-        end
-        esc(res)
-    elseif expr.head == :(=)
-        _expr = deepcopy(expr)
+    if expr isa Symbol
         res = quote
             if @isdefined($:__LOGGER_DICT__)
                 __TMP_DICT__ = Dict()
                 @log(__TMP_DICT__, $expr)
-                __LOGGER_DICT__[$symbol] = haskey(__LOGGER_DICT__, $symbol) ? merge(__LOGGER_DICT__[$symbol], __TMP_DICT__) : __TMP_DICT__
+                haskey(__LOGGER_DICT__, $symbol) ? $recursive_merge([__LOGGER_DICT__[$symbol], __TMP_DICT__]...) : setindex!(__LOGGER_DICT__, __TMP_DICT__, $symbol)
             else
-                $_expr
+                $expr
+            end
+        end
+        esc(res)
+    elseif expr.head == :call
+        push!(expr.args, :(__LOG_INDICATOR__()))
+        res = quote
+            if @isdefined($:__LOGGER_DICT__)
+                haskey(__LOGGER_DICT__, $symbol) ? error("Already defined key: $(symbol)") : setindex!(__LOGGER_DICT__, $expr, $symbol)
+            else
+                $expr
+            end
+        end
+        esc(res)
+    elseif expr.head == :(=)  # @nested_log env_name x = a  or  @nested_log env_name x, y = a, b
+        res = quote
+            if @isdefined($:__LOGGER_DICT__)
+                __TMP_DICT__ = Dict()
+                @log(__TMP_DICT__, $expr)
+                # haskey(__LOGGER_DICT__, $symbol) ? merge(__LOGGER_DICT__[$symbol], __TMP_DICT__) : setindex!(__LOGGER_DICT__, __TMP_DICT__, $symbol)
+                haskey(__LOGGER_DICT__, $symbol) ? $recursive_merge([__LOGGER_DICT__[$symbol], __TMP_DICT__]...) : setindex!(__LOGGER_DICT__, __TMP_DICT__, $symbol)
+            else
+                $expr
+            end
+        end
+        esc(res)
+    elseif expr.args isa Array  # @nested_log env_name a, b
+        res = quote
+            if @isdefined($:__LOGGER_DICT__)
+                __TMP_DICT__ = Dict()
+                @log(__TMP_DICT__, $expr)
+                # haskey(__LOGGER_DICT__, $symbol) ? merge(__LOGGER_DICT__[$symbol], __TMP_DICT__) : setindex!(__LOGGER_DICT__, __TMP_DICT__, $symbol)
+                haskey(__LOGGER_DICT__, $symbol) ? $recursive_merge([__LOGGER_DICT__[$symbol], __TMP_DICT__]...) : setindex!(__LOGGER_DICT__, __TMP_DICT__, $symbol)
+            else
+                $expr
             end
         end
         esc(res)
     else
-        error("Call the ODE function of a sub-environment, e.g., `@nested_log :env_name dynamics!(dx.sub, x.sub, p.sub, t)`")
+        error_invalid_expr_head()
     end
+end
+
+macro nested_log(expr)
+    if expr isa Symbol
+        res = quote
+            if @isdefined($:__LOGGER_DICT__)
+                @nested_log(esc($expr), $expr)
+                # __LOGGER_DICT__ = $recursive_merge([__LOGGER_DICT__, $expr]...)
+            else
+                $expr
+            end
+        end
+        esc(res)
+    elseif expr.head == :call
+        push!(expr.args, :(__LOG_INDICATOR__()))
+        res = quote
+            if @isdefined($:__LOGGER_DICT__)
+                __LOGGER_DICT__ = $recursive_merge([__LOGGER_DICT__, $expr]...)
+            else
+                $expr
+            end
+        end
+        esc(res)
+    else
+        error_invalid_expr_head()
+    end
+end
+
+function error_invalid_expr_head()
+    error("Invalid expression head")
 end

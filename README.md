@@ -14,6 +14,7 @@ const FS = FlightSims
 using DifferentialEquations
 using LinearAlgebra
 using Plots
+using Test
 
 
 function test()
@@ -35,25 +36,23 @@ function test()
     # simulation
     tf = 10.0
     Δt = 0.01
-    affect!(integrator) = integrator.p = copy(integrator.u)  # auxiliary callback
-    cb = PeriodicCallback(affect!, Δt; initial_affect=true)
+    affect!(integrator) = integrator.p = copy(integrator.u)  # auxiliary callback funciton
+    cb = PeriodicCallback(affect!, Δt; initial_affect=true)  # auxiliary callback
     @Loggable function dynamics!(dx, x, p, t; u)
         @onlylog p  # activate this line only when logging data
-        @log state = x
-        @log input = u
-        # nested logging
-        @nested_log :linear state_square = x .^ 2  # to put additional data into the same symbol (:linear)
-        @nested_log :linear Dynamics!(env)(dx, x, p, t; u=u)
+        @log x, u
+        @nested_log Dynamics!(env)(dx, x, p, t; u=u)  # exported `state` and `input` from `Dynamics!(env)`
     end
     prob, df = sim(
                    x0,  # initial condition
-                   # apply_inputs(Dynamics!(env); u=u_lqr),  # dynamics with input of LQR
                    apply_inputs(dynamics!; u=u_lqr),  # dynamics with input of LQR
                    p0;
                    tf=tf,  # final time
                    callback=cb,
                    savestep=Δt,
                   )
+    @test df.x == df.state
+    @test df.u == df.input
     p_x = plot(df.time, hcat(df.state...)';
                title="state variable", label=["x1" "x2"], color=[:black :black], lw=1.5,
               )  # Plots
@@ -75,41 +74,59 @@ using SimulationLogger
 using DifferentialEquations
 using Transducers
 using Plots
+using Test
 
 
 function test()
-    @Loggable function dynamics!(dx, x, p, t)
-        @log x
-        @log u = -x
-        @onlylog state = x
-        @onlylog input = u
+    @Loggable function dynamics!(dx, x, p, t; u)
+        @onlylog state, input = x, u  # __LOGGER_DICT__[:state] = x, __LOGGER_DICT__[:input] = u
         dx .= u
+    end
+    @Loggable function feedback_dynamics!(dx, x, p, t)
+        @onlylog time = t  # __LOGGER_DICT__[:time] = t
+        @log x, t  # __LOGGER_DICT__[:x] = x
+        @log u = -x  # __LOGGER_DICT__[:u] = -x
+        @nested_log :linear x
+        @nested_log :linear dynamics!(dx, x, p, t; u=u)
     end
     t0, tf = 0.0, 10.0
     Δt = 0.01
-    log_func(x, t, integrator::DiffEqBase.DEIntegrator; kwargs...) = dynamics!(zero.(x), copy(x), integrator.p, t, __LOG_INDICATOR__(); kwargs...)
     saved_values = SavedValues(Float64, Dict)
-    cb = SavingCallback(log_func, saved_values;
-                        saveat=t0:Δt:tf)
+    cb = CallbackSet()
+    if hasmethod(feedback_dynamics!, Tuple{Any, Any, Any, Any, __LOG_INDICATOR__})
+        # to avoid undefined error when not adding @Loggable
+        log_func(x, t, integrator::DiffEqBase.DEIntegrator; kwargs...) = feedback_dynamics!(zero.(x), copy(x), integrator.p, t, __LOG_INDICATOR__(); kwargs...)
+        cb = SavingCallback(log_func, saved_values; saveat=t0:Δt:tf)
+    end
     # # sim
     x0 = [1, 2, 3]
     tspan = (t0, tf)
     prob = ODEProblem(
-                      dynamics!, x0, tspan;
+                      feedback_dynamics!, x0, tspan;
                       callback=cb,
                      )
     _ = solve(prob)
-    ts = saved_values.t
-    xs = saved_values.saveval |> Map(datum -> datum[:state]) |> collect
-    us = saved_values.saveval |> Map(datum -> datum[:input]) |> collect
+    @show saved_values.saveval
+    ts = saved_values.saveval |> Map(datum -> datum[:t]) |> collect
+    xs = saved_values.saveval |> Map(datum -> datum[:x]) |> collect
+    us = saved_values.saveval |> Map(datum -> datum[:u]) |> collect
+    times = saved_values.saveval |> Map(datum -> datum[:time]) |> collect
+    states = saved_values.saveval |> Map(datum -> datum[:linear][:state]) |> collect
+    inputs = saved_values.saveval |> Map(datum -> datum[:linear][:input]) |> collect
+    @test ts == saved_values.t
+    @test ts == times
+    @test xs == states
+    @test us == inputs
     p_x = plot(ts, hcat(xs...)')
     p_u = plot(ts, hcat(us...)')
     dir_log = "figures"
     mkpath(dir_log)
     savefig(p_x, joinpath(dir_log, "state.png"))
+    savefig(p_u, joinpath(dir_log, "input.png"))
 end
 ```
 ![ex_screenshot](./figures/state.png)
+![ex_screenshot](./figures/input.png)
 
 
 # Main macros
@@ -125,7 +142,7 @@ end
 `@Loggable` generates additional method for the generic function of the annotated function definition.
 The additional method receives `__log__indicator__::__LOG_INDICATOR__` as the last argument (other arguments are the same as the original function definition).
 ### Notice
-- This macro should be used in front of "function definition". For example,
+- This macro is supposed to be used in front of "function definition". For example,
 ```julia
 @Loggable function dynamics!(dx, x, p, t)
     dx .= -x
@@ -136,21 +153,6 @@ is good.
 @Loggable dynamics! = (dx, x, p, t) -> dx .= -x
 ```
 may not work properly.
-- Functions annotated by `@Loggable` **MUST NOT** have `return` keyword. For example,
-```julia
-@Loggable function dynamics!(dx, x, p, t)
-    dx .= -x
-    nothing
-end
-```
-works fine, but the logging functionality with `return`, for example,
-```julia
-@Loggable function dynamics!(dx, x, p, t)
-    dx .= -x
-    return nothing
-end
-```
-may behave poorly.
 ## `@log`
 This macro logs the annotated variable, and also executes the followed expression when *both solving DEProblem and logging data*.
 ### Example
@@ -176,7 +178,30 @@ end
 ## `@nested_log`
 This macro logs (possibly) multiple data in a nested sense.
 ### Example
-- [ ] Add an example
+1. nested log with specified name
+```julia
+@Loggable function dynamics!(dx, x, p, t)
+    @log state = x  # __LOGGER_DICT__[:state] = x
+    dx .= -x
+end
+
+@Loggable function feedback_dynamics!(dx, x, p, t)
+    @log time = t  # __LOGGER_DICT__[:time] = t
+    @nested_log :linear dynamics!(dx, x, p, t)  # __LOGGER_DICT__[:linear] = Dict(:state => x)
+end
+```
+2. nested log with no name
+```julia
+@Loggable function dynamics!(dx, x, p, t)
+    @log state = x  # __LOGGER_DICT__[:state] = x
+    dx .= -x
+end
+
+@Loggable function feedback_dynamics!(dx, x, p, t)
+    @log time = t  # __LOGGER_DICT__[:time] = t
+    @nested_log dynamics!(dx, x, p, t)  # __LOGGER_DICT__[:state] = x
+end
+```
 
 # NOTICE
 - `__LOGGER_DICT__` is a privileged name to contain variables annotated by logging macros. **DO NOT USE THIS NAME IN USUAL CASE**.
