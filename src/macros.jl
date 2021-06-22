@@ -6,6 +6,29 @@ Helper struct to specify a method as logging tool.
 struct __LOG_INDICATOR__
 end
 
+
+"""
+# Notes
+```julia
+x = [ Dict("d1"=>"A1")
+        Dict("d1b"=>Dict("d2a"=>"B1"))
+         Dict("d1b"=>Dict("d2b"=>"C1"))
+          Dict("d1b"=>Dict("d2c"=>Dict("d3a"=>"D1")))
+           Dict("d1b"=>Dict("d2c"=>Dict("d3b"=>"E1")))]
+
+julia> recursive_merge(x...) # with your last x
+Dict{String,Any} with 2 entries:
+  "d1"  => "A1"
+  "d1b" => Dict{String,Any}("d2b"=>"C1","d2a"=>"B1","d2c"=>Dict("d3b"=>"E1","d3a"=>"D1"))
+```
+# References
+https://discourse.julialang.org/t/multi-layer-dict-merge/27261/2?u=ihany
+"""
+function recursive_merge(x::AbstractDict...)
+    merge(recursive_merge, x...)
+end
+
+
 """
     @Loggable(defun)
 
@@ -144,7 +167,7 @@ macro onlylog(expr)
 end
 
 """
-    @onlylog(symbol, expr)
+    @nested_log(symbol, expr)
 
 A macro that enables us to log data in a nested sense.
 # Examples
@@ -158,9 +181,26 @@ will log data from `dynamics!(dx.sub, x.sub, p.sub, t)` as
 ```julia
 @nested_log :subsystem state = x
 ```
+
+# NOTICE
+If you assign values with the two same keys, it will yield an error looks like:
+```julia
+ERROR: MethodError: no method matching recursive_merge(::Int64, ::Int64)
+```
 """
 macro nested_log(symbol, expr)
-    if expr.head == :call
+    if expr isa Symbol
+        res = quote
+            if @isdefined($:__LOGGER_DICT__)
+                __TMP_DICT__ = Dict()
+                @log(__TMP_DICT__, $expr)
+                haskey(__LOGGER_DICT__, $symbol) ? $recursive_merge([__LOGGER_DICT__[$symbol], __TMP_DICT__]...) : setindex!(__LOGGER_DICT__, __TMP_DICT__, $symbol)
+            else
+                $expr
+            end
+        end
+        esc(res)
+    elseif expr.head == :call
         push!(expr.args, :(__LOG_INDICATOR__()))
         res = quote
             if @isdefined($:__LOGGER_DICT__)
@@ -175,7 +215,8 @@ macro nested_log(symbol, expr)
             if @isdefined($:__LOGGER_DICT__)
                 __TMP_DICT__ = Dict()
                 @log(__TMP_DICT__, $expr)
-                haskey(__LOGGER_DICT__, $symbol) ? merge(__LOGGER_DICT__[$symbol], __TMP_DICT__) : setindex!(__LOGGER_DICT__, __TMP_DICT__, $symbol)
+                # haskey(__LOGGER_DICT__, $symbol) ? merge(__LOGGER_DICT__[$symbol], __TMP_DICT__) : setindex!(__LOGGER_DICT__, __TMP_DICT__, $symbol)
+                haskey(__LOGGER_DICT__, $symbol) ? $recursive_merge([__LOGGER_DICT__[$symbol], __TMP_DICT__]...) : setindex!(__LOGGER_DICT__, __TMP_DICT__, $symbol)
             else
                 $expr
             end
@@ -186,7 +227,8 @@ macro nested_log(symbol, expr)
             if @isdefined($:__LOGGER_DICT__)
                 __TMP_DICT__ = Dict()
                 @log(__TMP_DICT__, $expr)
-                haskey(__LOGGER_DICT__, $symbol) ? merge(__LOGGER_DICT__[$symbol], __TMP_DICT__) : setindex!(__LOGGER_DICT__, __TMP_DICT__, $symbol)
+                # haskey(__LOGGER_DICT__, $symbol) ? merge(__LOGGER_DICT__[$symbol], __TMP_DICT__) : setindex!(__LOGGER_DICT__, __TMP_DICT__, $symbol)
+                haskey(__LOGGER_DICT__, $symbol) ? $recursive_merge([__LOGGER_DICT__[$symbol], __TMP_DICT__]...) : setindex!(__LOGGER_DICT__, __TMP_DICT__, $symbol)
             else
                 $expr
             end
@@ -198,11 +240,21 @@ macro nested_log(symbol, expr)
 end
 
 macro nested_log(expr)
-    if expr.head == :call
+    if expr isa Symbol
+        res = quote
+            if @isdefined($:__LOGGER_DICT__)
+                @nested_log(esc($expr), $expr)
+                # __LOGGER_DICT__ = $recursive_merge([__LOGGER_DICT__, $expr]...)
+            else
+                $expr
+            end
+        end
+        esc(res)
+    elseif expr.head == :call
         push!(expr.args, :(__LOG_INDICATOR__()))
         res = quote
             if @isdefined($:__LOGGER_DICT__)
-                __LOGGER_DICT__ = merge(__LOGGER_DICT__, $expr)
+                __LOGGER_DICT__ = $recursive_merge([__LOGGER_DICT__, $expr]...)
             else
                 $expr
             end

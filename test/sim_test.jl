@@ -14,6 +14,7 @@ function test()
         @onlylog time = t  # __LOGGER_DICT__[:time] = t
         @log x, t  # __LOGGER_DICT__[:x] = x
         @log u = -x  # __LOGGER_DICT__[:u] = -x
+        @nested_log :linear x
         @nested_log :linear dynamics!(dx, x, p, t; u=u)
     end
     t0, tf = 0.0, 10.0
@@ -33,6 +34,7 @@ function test()
                       callback=cb,
                      )
     _ = solve(prob)
+    @show saved_values.saveval
     ts = saved_values.saveval |> Map(datum -> datum[:t]) |> collect
     xs = saved_values.saveval |> Map(datum -> datum[:x]) |> collect
     us = saved_values.saveval |> Map(datum -> datum[:u]) |> collect
