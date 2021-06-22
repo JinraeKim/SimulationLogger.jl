@@ -27,6 +27,15 @@ https://discourse.julialang.org/t/multi-layer-dict-merge/27261/2?u=ihany
 function recursive_merge(x::AbstractDict...)
     merge(recursive_merge, x...)
 end
+function recursive_merge(x...)
+    error("Invalid recursive_merge; did you assign values with the same key?
+          For example,
+          ```julia
+          @nested_log :values x = 1
+          @nested_log :values x = 2
+          ```
+          Otherwise, please report an issue.")
+end
 
 
 """
