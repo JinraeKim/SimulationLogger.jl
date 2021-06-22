@@ -49,6 +49,7 @@ macro Loggable(defun)
     res = quote
         $(MacroTools.combinedef(_def))
         $(MacroTools.combinedef(def))
+        $(def[:name])
     end
     esc(res)
 end
