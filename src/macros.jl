@@ -288,6 +288,19 @@ macro nested_log(expr)
     end
 end
 
+"""
+    @nested_onlylog(expr)
+
+A macro that activates given expression (`expr`) only when logging data.
+Unlike `@nested_log(expr)`,
+this macro does not evaluate given experssion `expr`.
+"""
+macro nested_onlylog(expr)
+    esc(:(@isdefined($:__LOGGER_DICT__) ? @log($:__LOGGER_DICT__, $expr) : nothing))
+end
+
+
+# etc
 function error_invalid_expr_head()
     error("Invalid expression head")
 end
