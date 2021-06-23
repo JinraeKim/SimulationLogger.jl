@@ -203,7 +203,12 @@ macro nested_log(symbol, expr)
             if @isdefined($:__LOGGER_DICT__)
                 __TMP_DICT__ = Dict()
                 @log(__TMP_DICT__, $expr)
-                haskey(__LOGGER_DICT__, $symbol) ? $recursive_merge([__LOGGER_DICT__[$symbol], __TMP_DICT__]...) : setindex!(__LOGGER_DICT__, __TMP_DICT__, $symbol)
+                println(__TMP_DICT__)
+                if haskey(__LOGGER_DICT__, $symbol)
+                    __LOGGER_DICT__[$symbol] = $recursive_merge([__LOGGER_DICT__[$symbol], __TMP_DICT__]...)
+                else
+                    setindex!(__LOGGER_DICT__, __TMP_DICT__, $symbol)
+                end
             else
                 $expr
             end
@@ -213,7 +218,13 @@ macro nested_log(symbol, expr)
         push!(expr.args, :(__LOG_INDICATOR__()))
         res = quote
             if @isdefined($:__LOGGER_DICT__)
-                haskey(__LOGGER_DICT__, $symbol) ? error("Already defined key: $(symbol)") : setindex!(__LOGGER_DICT__, $expr, $symbol)
+                if haskey(__LOGGER_DICT__, $symbol)
+                    __TMP_DICT__ = Dict()
+                    @log(__TMP_DICT__, $expr)
+                    __LOGGER_DICT__[$symbol] = $recursive_merge([__LOGGER_DICT__[$symbol], __TMP_DICT__]...)
+                else
+                    setindex!(__LOGGER_DICT__, $expr, $symbol)
+                end
             else
                 $expr
             end
@@ -224,8 +235,11 @@ macro nested_log(symbol, expr)
             if @isdefined($:__LOGGER_DICT__)
                 __TMP_DICT__ = Dict()
                 @log(__TMP_DICT__, $expr)
-                # haskey(__LOGGER_DICT__, $symbol) ? merge(__LOGGER_DICT__[$symbol], __TMP_DICT__) : setindex!(__LOGGER_DICT__, __TMP_DICT__, $symbol)
-                haskey(__LOGGER_DICT__, $symbol) ? $recursive_merge([__LOGGER_DICT__[$symbol], __TMP_DICT__]...) : setindex!(__LOGGER_DICT__, __TMP_DICT__, $symbol)
+                if haskey(__LOGGER_DICT__, $symbol)
+                    __LOGGER_DICT__[$symbol] = $recursive_merge([__LOGGER_DICT__[$symbol], __TMP_DICT__]...)
+                else
+                    setindex!(__LOGGER_DICT__, __TMP_DICT__, $symbol)
+                end
             else
                 $expr
             end
