@@ -40,7 +40,7 @@ function test_nested_log(log)
         @show @nested_log :values y
         @show @nested_log my_logging()
         @show @nested_onlylog k = 1
-        @show k
+        @show k  # ERROR: UndefVarError: k not defined
     end
 end
 
