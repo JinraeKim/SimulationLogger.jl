@@ -1,7 +1,7 @@
 name = "SimulationLogger"
 uuid = "0f3b6f24-f534-4b11-a614-00dcf4ece10c"
 authors = ["JinraeKim <kjl950403@gmail.com> and contributors"]
-version = "0.1.1"
+version = "0.2.0"
 
 [deps]
 MacroTools = "1914dd2f-81c6-5fcd-8719-6d5c9610ff09"
