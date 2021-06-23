@@ -203,6 +203,10 @@ end
 end
 ```
 
+## `@nested_onlylog`
+This macro logs (possibly) multiple data in a nested sense **only when logging data** (similar to `@onlylog`).
+
+
 # NOTICE
 - `__LOGGER_DICT__` is a privileged name to contain variables annotated by logging macros. **DO NOT USE THIS NAME IN USUAL CASE**.
 - This package supports only [**in-place** method](https://diffeq.sciml.ai/stable/basics/problem/#In-place-vs-Out-of-Place-Function-Definition-Forms) of DifferentialEquations.jl.

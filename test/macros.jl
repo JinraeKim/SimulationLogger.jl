@@ -32,11 +32,15 @@ function test_nested_log(log)
         # @show @nested_log :values x = 2  # new assignment with the same key will yield an error
         @show @nested_log :values y
         @show @nested_log my_logging()
+        @show @nested_onlylog k = 1
+        @show k
         @show __LOGGER_DICT__
     else
         @show @nested_log :values x = 1
         @show @nested_log :values y
         @show @nested_log my_logging()
+        @show @nested_onlylog k = 1
+        @show k
     end
 end
 
