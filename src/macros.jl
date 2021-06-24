@@ -197,63 +197,69 @@ If you assign values with the two same keys, it will yield an error looks like:
 ERROR: MethodError: no method matching recursive_merge(::Int64, ::Int64)
 ```
 """
-macro nested_log(symbol, expr)
+macro nested_log(__LOGGER_DICT__, symbol, expr)
     if expr isa Symbol
         res = quote
-            if @isdefined($:__LOGGER_DICT__)
-                __TMP_DICT__ = Dict()
-                @log(__TMP_DICT__, $expr)
-                println(__TMP_DICT__)
-                if haskey(__LOGGER_DICT__, $symbol)
-                    __LOGGER_DICT__[$symbol] = $recursive_merge([__LOGGER_DICT__[$symbol], __TMP_DICT__]...)
-                else
-                    setindex!(__LOGGER_DICT__, __TMP_DICT__, $symbol)
-                end
+            local logger_dict = $(__LOGGER_DICT__)
+            __TMP_DICT__ = Dict()
+            @log(__TMP_DICT__, $expr)
+            if $symbol == nothing
+                __LOGGER_DICT__ = $recursive_merge([logger_dict, __TMP_DICT__]...)
             else
-                $expr
+                if haskey(logger_dict, $symbol)
+                    logger_dict[$symbol] = $recursive_merge([logger_dict[$symbol], __TMP_DICT__]...)
+                else
+                    setindex!(logger_dict, __TMP_DICT__, $symbol)
+                end
             end
         end
         esc(res)
     elseif expr.head == :call
         push!(expr.args, :(__LOG_INDICATOR__()))
         res = quote
-            if @isdefined($:__LOGGER_DICT__)
-                if haskey(__LOGGER_DICT__, $symbol)
-                    __TMP_DICT__ = Dict()
-                    @log(__TMP_DICT__, $expr)
-                    __LOGGER_DICT__[$symbol] = $recursive_merge([__LOGGER_DICT__[$symbol], __TMP_DICT__]...)
-                else
-                    setindex!(__LOGGER_DICT__, $expr, $symbol)
-                end
+            local logger_dict = $(__LOGGER_DICT__)
+            __TMP_DICT__ = Dict()
+            @log(__TMP_DICT__, $expr)
+            if $symbol == nothing
+                __LOGGER_DICT__ = $recursive_merge([logger_dict, __TMP_DICT__]...)
             else
-                $expr
+                if haskey(logger_dict, $symbol)
+                    logger_dict[$symbol] = $recursive_merge([logger_dict[$symbol], __TMP_DICT__]...)
+                else
+                    setindex!(logger_dict, $expr, $symbol)
+                end
             end
         end
         esc(res)
     elseif expr.head == :(=)  # @nested_log env_name x = a  or  @nested_log env_name x, y = a, b
         res = quote
-            if @isdefined($:__LOGGER_DICT__)
-                __TMP_DICT__ = Dict()
-                @log(__TMP_DICT__, $expr)
-                if haskey(__LOGGER_DICT__, $symbol)
-                    __LOGGER_DICT__[$symbol] = $recursive_merge([__LOGGER_DICT__[$symbol], __TMP_DICT__]...)
-                else
-                    setindex!(__LOGGER_DICT__, __TMP_DICT__, $symbol)
-                end
+            local logger_dict = $(__LOGGER_DICT__)
+            __TMP_DICT__ = Dict()
+            @log(__TMP_DICT__, $expr)
+            if $symbol == nothing
+                __LOGGER_DICT__ = $recursive_merge([logger_dict, __TMP_DICT__]...)  # 'cause it is not in-place.
             else
-                $expr
+                if haskey(logger_dict, $symbol)
+                    logger_dict[$symbol] = $recursive_merge([logger_dict[$symbol], __TMP_DICT__]...)
+                else
+                    setindex!(logger_dict, __TMP_DICT__, $symbol)
+                end
             end
         end
         esc(res)
     elseif expr.args isa Array  # @nested_log env_name a, b
         res = quote
-            if @isdefined($:__LOGGER_DICT__)
-                __TMP_DICT__ = Dict()
-                @log(__TMP_DICT__, $expr)
-                # haskey(__LOGGER_DICT__, $symbol) ? merge(__LOGGER_DICT__[$symbol], __TMP_DICT__) : setindex!(__LOGGER_DICT__, __TMP_DICT__, $symbol)
-                haskey(__LOGGER_DICT__, $symbol) ? $recursive_merge([__LOGGER_DICT__[$symbol], __TMP_DICT__]...) : setindex!(__LOGGER_DICT__, __TMP_DICT__, $symbol)
+            local logger_dict = $(__LOGGER_DICT__)
+            __TMP_DICT__ = Dict()
+            @log(__TMP_DICT__, $expr)
+            if $symbol == nothing
+                __LOGGER_DICT__ = $recursive_merge([logger_dict, __TMP_DICT__]...)  # 'cause it is not in-place.
             else
-                $expr
+                if haskey(logger_dict, $symbol)
+                    logger_dict[$symbol] = $recursive_merge([logger_dict[$symbol], __TMP_DICT__]...)
+                else
+                    setindex!(logger_dict, __TMP_DICT__, $symbol)
+                end
             end
         end
         esc(res)
@@ -262,15 +268,14 @@ macro nested_log(symbol, expr)
     end
 end
 
+macro nested_log(symbol, expr)
+    esc(:(@isdefined($:__LOGGER_DICT__) ? @nested_log($:__LOGGER_DICT__, $symbol, $expr) : $expr))
+end
+
 macro nested_log(expr)
     if expr isa Symbol
         res = quote
-            if @isdefined($:__LOGGER_DICT__)
-                @nested_log(esc($expr), $expr)
-                # __LOGGER_DICT__ = $recursive_merge([__LOGGER_DICT__, $expr]...)
-            else
-                $expr
-            end
+            @nested_log(esc($expr), $expr)
         end
         esc(res)
     elseif expr.head == :call
@@ -289,6 +294,17 @@ macro nested_log(expr)
 end
 
 """
+    @nested_onlylog(symbol, expr)
+
+A macro that activates given expression (`expr`) only when logging data.
+Unlike `@nested_log(symbol, expr)`,
+this macro does not evaluate given experssion `expr`.
+"""
+macro nested_onlylog(symbol, expr)
+    esc(:(@isdefined($:__LOGGER_DICT__) ? @nested_log($:__LOGGER_DICT__, $symbol, $expr) : nothing))
+end
+
+"""
     @nested_onlylog(expr)
 
 A macro that activates given expression (`expr`) only when logging data.
@@ -296,7 +312,7 @@ Unlike `@nested_log(expr)`,
 this macro does not evaluate given experssion `expr`.
 """
 macro nested_onlylog(expr)
-    esc(:(@isdefined($:__LOGGER_DICT__) ? @log($:__LOGGER_DICT__, $expr) : nothing))
+    esc(:(@isdefined($:__LOGGER_DICT__) ? @nested_log($:__LOGGER_DICT__, nothing, $expr) : nothing))
 end
 
 
