@@ -273,16 +273,18 @@ macro nested_log(symbol, expr)
 end
 
 macro nested_log(expr)
-    if expr isa Symbol
+    if expr isa Symbol  # @nested_log x
         res = quote
-            @nested_log(esc($expr), $expr)
+            @nested_log(esc($expr), $expr)  # __LOGGER_DICT__[:x] = x
         end
         esc(res)
-    elseif expr.head == :call
-        push!(expr.args, :(__LOG_INDICATOR__()))
+    elseif expr.head == :call  # @nested_log my_func() where my_func() = dict
+        _expr = copy(expr)
+        push!(_expr.args, :(__LOG_INDICATOR__()))  # to distinguish whether call extended function with __LOGGER_DICT__ or not (in advance)
         res = quote
             if @isdefined($:__LOGGER_DICT__)
-                __LOGGER_DICT__ = $recursive_merge([__LOGGER_DICT__, $expr]...)
+                __LOGGER_DICT__ = $recursive_merge([__LOGGER_DICT__, $_expr]...)
+                $expr
             else
                 $expr
             end

@@ -32,6 +32,7 @@ function test_nested_log(log)
         # @show @nested_log :values x = 2  # new assignment with the same key will yield an error
         @show @nested_log :values y
         @show @nested_log my_logging()
+        @show _w = @nested_log my_logging2()
         @show @nested_onlylog k = 1
         @show @nested_onlylog :values j = 1
         @show k
@@ -40,6 +41,7 @@ function test_nested_log(log)
         @show @nested_log :values x = 1
         @show @nested_log :values y
         @show @nested_log my_logging()
+        @show _w = @nested_log my_logging2()
         @show @nested_onlylog :values j = 1
         @show k  # ERROR: UndefVarError: k not defined
     end
@@ -47,4 +49,9 @@ end
 
 @Loggable function my_logging()
     @nested_log :values z = 1
+end
+
+@Loggable function my_logging2()
+    @log w = 3
+    w
 end
