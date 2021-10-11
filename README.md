@@ -23,14 +23,19 @@ function test()
         @onlylog state, input = x, u  # __LOGGER_DICT__[:state] = x, __LOGGER_DICT__[:input] = u
         dx .= u
     end
+    @Loggable function custom_control(x)
+        @log a = 1
+        -a*x
+    end
     @Loggable function feedback_dynamics!(dx, x, p, t)
         @onlylog time = t  # __LOGGER_DICT__[:time] = t
         @log x, t  # __LOGGER_DICT__[:x] = x
-        @log u = -x  # __LOGGER_DICT__[:u] = -x
+        u = @nested_log custom_control(x)  # __LOGGER_DICT__[:a] = 1
+        @log u  # __LOGGER_DICT__[:u] = -a*x
         @nested_log :linear x
         @nested_log :linear dynamics!(dx, x, p, t; u=u)
     end
-    t0, tf = 0.0, 10.0
+    t0, tf = 0.0, 0.1
     Δt = 0.01
     saved_values = SavedValues(Float64, Dict)
     cb = CallbackSet()
@@ -47,17 +52,18 @@ function test()
                       callback=cb,
                      )
     _ = solve(prob)
-    @show saved_values.saveval
     ts = saved_values.saveval |> Map(datum -> datum[:t]) |> collect
     xs = saved_values.saveval |> Map(datum -> datum[:x]) |> collect
     us = saved_values.saveval |> Map(datum -> datum[:u]) |> collect
     times = saved_values.saveval |> Map(datum -> datum[:time]) |> collect
     states = saved_values.saveval |> Map(datum -> datum[:linear][:state]) |> collect
     inputs = saved_values.saveval |> Map(datum -> datum[:linear][:input]) |> collect
+    as = saved_values.saveval |> Map(datum -> datum[:a]) |> collect
     @test ts == saved_values.t
     @test ts == times
     @test xs == states
     @test us == inputs
+    @test as == ones(length(ts))
     p_x = plot(ts, hcat(xs...)')
     p_u = plot(ts, hcat(us...)')
     dir_log = "figures"
