@@ -212,23 +212,26 @@ macro nested_log(__LOGGER_DICT__, symbol, expr)
                     setindex!(logger_dict, __TMP_DICT__, $symbol)
                 end
             end
+            $expr
         end
         esc(res)
     elseif expr.head == :call
-        push!(expr.args, :(__LOG_INDICATOR__()))
+        _expr = copy(expr)
+        push!(_expr.args, :(__LOG_INDICATOR__()))
         res = quote
             local logger_dict = $(__LOGGER_DICT__)
             __TMP_DICT__ = Dict()
-            @log(__TMP_DICT__, $expr)
+            __TMP_DICT__ = $recursive_merge([__TMP_DICT__, $_expr]...)
             if $symbol == nothing
                 __LOGGER_DICT__ = $recursive_merge([logger_dict, __TMP_DICT__]...)
             else
                 if haskey(logger_dict, $symbol)
                     logger_dict[$symbol] = $recursive_merge([logger_dict[$symbol], __TMP_DICT__]...)
                 else
-                    setindex!(logger_dict, $expr, $symbol)
+                    setindex!(logger_dict, $_expr, $symbol)
                 end
             end
+            $expr
         end
         esc(res)
     elseif expr.head == :(=)  # @nested_log env_name x = a  or  @nested_log env_name x, y = a, b
@@ -245,6 +248,7 @@ macro nested_log(__LOGGER_DICT__, symbol, expr)
                     setindex!(logger_dict, __TMP_DICT__, $symbol)
                 end
             end
+            $expr
         end
         esc(res)
     elseif expr.args isa Array  # @nested_log env_name a, b
@@ -261,6 +265,7 @@ macro nested_log(__LOGGER_DICT__, symbol, expr)
                     setindex!(logger_dict, __TMP_DICT__, $symbol)
                 end
             end
+            $expr
         end
         esc(res)
     else
@@ -273,19 +278,22 @@ macro nested_log(symbol, expr)
 end
 
 macro nested_log(expr)
-    if expr isa Symbol
+    if expr isa Symbol  # @nested_log x
         res = quote
-            @nested_log(esc($expr), $expr)
+            @nested_log(esc($expr), $expr)  # __LOGGER_DICT__[:x] = x
         end
         esc(res)
-    elseif expr.head == :call
-        push!(expr.args, :(__LOG_INDICATOR__()))
+    elseif expr.head == :call  # @nested_log my_func() where my_func() = dict
+        _expr = copy(expr)
+        push!(_expr.args, :(__LOG_INDICATOR__()))  # to distinguish whether call extended function with __LOGGER_DICT__ or not (in advance)
         res = quote
             if @isdefined($:__LOGGER_DICT__)
-                __LOGGER_DICT__ = $recursive_merge([__LOGGER_DICT__, $expr]...)
-            else
-                $expr
+                __LOGGER_DICT__ = $recursive_merge([__LOGGER_DICT__, $_expr]...)
+                # $expr
+            # else
+            #     $expr
             end
+            $expr
         end
         esc(res)
     else

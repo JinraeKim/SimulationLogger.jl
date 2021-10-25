@@ -6,67 +6,8 @@ SimulationLogger.jl is a package providing convenient logging tools for [Differe
 and it uses SimulationLogger.jl as a main logging tool. You can find real examples about **how to use this package** in FlightSims.jl.
 
 # TL; DR: example code
-## Example 1: typical usage (see [FlightSims.jl](https://github.com/JinraeKim/FlightSims.jl) for details)
-
-```julia
-using FlightSims
-const FS = FlightSims
-using DifferentialEquations
-using LinearAlgebra
-using Plots
-using Test
-
-
-function test()
-    # linear system
-    A = [0 1;
-         0 0]
-    B = [0;
-         1]
-    n, m = 2, 1
-    env = LinearSystemEnv(A, B)  # exported from FlightSims
-    x0 = State(env)([1.0, 2.0])
-    p0 = zero.(x0)  # auxiliary parameter
-    # optimal control
-    Q = Matrix(I, n, n)
-    R = Matrix(I, m, m)
-    lqr = LQR(A, B, Q, R)  # exported from FlightSims
-    u_lqr = FS.OptimalController(lqr)  # (x, p, t) -> -K*x; minimise J = ∫ (x' Q x + u' R u) from 0 to ∞
-
-    # simulation
-    tf = 10.0
-    Δt = 0.01
-    affect!(integrator) = integrator.p = copy(integrator.u)  # auxiliary callback funciton
-    cb = PeriodicCallback(affect!, Δt; initial_affect=true)  # auxiliary callback
-    @Loggable function dynamics!(dx, x, p, t; u)
-        @onlylog p  # activate this line only when logging data
-        @log x, u
-        @nested_log Dynamics!(env)(dx, x, p, t; u=u)  # exported `state` and `input` from `Dynamics!(env)`
-    end
-    prob, df = sim(
-                   x0,  # initial condition
-                   apply_inputs(dynamics!; u=u_lqr),  # dynamics with input of LQR
-                   p0;
-                   tf=tf,  # final time
-                   callback=cb,
-                   savestep=Δt,
-                  )
-    @test df.x == df.state
-    @test df.u == df.input
-    p_x = plot(df.time, hcat(df.state...)';
-               title="state variable", label=["x1" "x2"], color=[:black :black], lw=1.5,
-              )  # Plots
-    plot!(p_x, df.time, hcat(df.p...)';
-          ls=:dash, label="param", color=[:red :orange], lw=1.5
-         )
-    savefig("figures/x_lqr.png")
-    plot(df.time, hcat(df.input...)'; title="control input", label="u")  # Plots
-    savefig("figures/u_lqr.png")
-    df
-end
-```
-![ex_screenshot](./figures/x_lqr.png)
-![ex_screenshot](./figures/u_lqr.png)
+## Example 1: typical usage
+See [FlightSims.jl](https://github.com/JinraeKim/FlightSims.jl) for details.
 
 ## Example 2: low-level usage
 ```julia
@@ -82,14 +23,19 @@ function test()
         @onlylog state, input = x, u  # __LOGGER_DICT__[:state] = x, __LOGGER_DICT__[:input] = u
         dx .= u
     end
+    @Loggable function custom_control(x)
+        @log a = 1
+        -a*x
+    end
     @Loggable function feedback_dynamics!(dx, x, p, t)
         @onlylog time = t  # __LOGGER_DICT__[:time] = t
         @log x, t  # __LOGGER_DICT__[:x] = x
-        @log u = -x  # __LOGGER_DICT__[:u] = -x
+        u = @nested_log custom_control(x)  # __LOGGER_DICT__[:a] = 1
+        @log u  # __LOGGER_DICT__[:u] = -a*x
         @nested_log :linear x
         @nested_log :linear dynamics!(dx, x, p, t; u=u)
     end
-    t0, tf = 0.0, 10.0
+    t0, tf = 0.0, 0.1
     Δt = 0.01
     saved_values = SavedValues(Float64, Dict)
     cb = CallbackSet()
@@ -106,17 +52,18 @@ function test()
                       callback=cb,
                      )
     _ = solve(prob)
-    @show saved_values.saveval
     ts = saved_values.saveval |> Map(datum -> datum[:t]) |> collect
     xs = saved_values.saveval |> Map(datum -> datum[:x]) |> collect
     us = saved_values.saveval |> Map(datum -> datum[:u]) |> collect
     times = saved_values.saveval |> Map(datum -> datum[:time]) |> collect
     states = saved_values.saveval |> Map(datum -> datum[:linear][:state]) |> collect
     inputs = saved_values.saveval |> Map(datum -> datum[:linear][:input]) |> collect
+    as = saved_values.saveval |> Map(datum -> datum[:a]) |> collect
     @test ts == saved_values.t
     @test ts == times
     @test xs == states
     @test us == inputs
+    @test as == ones(length(ts))
     p_x = plot(ts, hcat(xs...)')
     p_u = plot(ts, hcat(us...)')
     dir_log = "figures"
@@ -202,6 +149,25 @@ end
     @nested_log dynamics!(dx, x, p, t)  # __LOGGER_DICT__[:state] = x
 end
 ```
+3. `@nested_log` with assignment
+```julia
+@Loggable function dynamics!(dx, x, p, t; u)
+    @log state = x  # __LOGGER_DICT__[:state] = x
+    @log input = u  # __LOGGER_DICT__[:input] = u
+    dx .= u
+end
+
+@Loggable function control(x)
+    @log a = 1  # hidden state; internally defined variable
+    -a*x
+end
+
+@Loggable function feedback_dynamics!(dx, x, p, t)
+    @log time = t  # __LOGGER_DICT__[:time] = t
+    u = @nested_log control(x)  # __LOGGER_DICT__[:a] = 1
+    @nested_log dynamics!(dx, x, p, t; u)  # __LOGGER_DICT__[:state] = x
+end
+```
 
 ## `@nested_onlylog`
 This macro logs (possibly) multiple data in a nested sense **only when logging data** (similar to `@onlylog`).
@@ -214,6 +180,10 @@ This macro logs (possibly) multiple data in a nested sense **only when logging d
 
 
 # Notes
+## Background of this package
 - This basic form of this macro is inspired by [SimulationLogs.jl](https://github.com/jonniedie/SimulationLogs.jl). But there are some differences. For example, `@log` in this package is based on [SavingCallback](https://diffeq.sciml.ai/stable/features/callback_library/#saving_callback), while `@log` in [SimulationLogs.jl](https://github.com/jonniedie/SimulationLogs.jl) will save data in the sense of postprocessing.
 There are two main advantages: this package can 1) log data without repeating the same code within differential equation (DE) functions, and 2) deal with stochastic parameter updates.
 For more details, see [the original question](https://discourse.julialang.org/t/differentialequations-jl-saving-data-without-redundant-calculation-of-control-inputs/62559/3) and [the idea of this package](https://discourse.julialang.org/t/make-a-variable-as-a-global-variable-within-a-function/63067/21).
+
+## Feature request and bug report
+Please feel free to request additional features and report bugs!
