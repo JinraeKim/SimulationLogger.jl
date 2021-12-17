@@ -1,12 +1,42 @@
 using SimulationLogger
+using Zygote
+using Test
+using BangBang
 
 
-function test()
-    log = true
-    # log = false
+"""
+log = true or log = false
+"""
+function test(log::Bool)
     test_log(log)
     test_nested_log(log)
+    test_zygote(:nt)  # works well with BangBang's !! syntax
+    test_zygote(:dict)  # may not work
     nothing
+end
+
+function test_zygote(type)
+    println("#"^10 * " test_zygote (type = $(type))" * "#"^10)
+    function my_func(y; type)
+        result = nothing
+        if type == :dict
+            __LOGGER_DICT__ = Dict()
+            @show @log y
+            @show @log x = y * 2
+            result = __LOGGER_DICT__ |> values |> sum
+        elseif type == :nt
+            __LOGGER_NT__ = NamedTuple()
+            # TODO: replace the following test lines with modified @log for NamedTuple
+            __LOGGER_NT__ = setindex!!(__LOGGER_NT__, y, :y)
+            __LOGGER_NT__ = setindex!!(__LOGGER_NT__, 2*y, :x)
+            result = __LOGGER_NT__ |> sum
+        else
+            error("")
+        end
+        result
+    end
+    @show my_func(1.0; type=type)  # function works?
+    @test gradient(y -> my_func(y; type), 1.0) == (3.0,)
 end
 
 function test_log(log)
