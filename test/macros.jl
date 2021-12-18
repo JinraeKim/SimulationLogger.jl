@@ -10,6 +10,7 @@ function main()
     println(">"^10 * " log false " * "<"^10)
     _main(false)
 end
+
 """
 log = true or log = false
 """
@@ -93,3 +94,5 @@ end
     @log w = 3
     w
 end
+
+main()

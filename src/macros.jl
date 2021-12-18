@@ -120,7 +120,7 @@ macro log(__LOGGER__, expr)
             local val = $(esc(expr))
             local var_name = $((expr,))[1]
             local logger_ = $(esc(__LOGGER__))
-            logger_ = haskey(logger_, var_name) ? error("Already defined key: $(var_name)") : setindex!!(logger_, val, var_name)
+            logger_ = haskey(logger_, var_name) ? error("Already defined key: $(var_name)") : $setindex!!(logger_, val, var_name)
             $(esc(__LOGGER__)) = logger_
             nothing
         end
@@ -131,7 +131,7 @@ macro log(__LOGGER__, expr)
                 local var_names = $(esc(expr.args[1].args))
                 local logger_ = $(esc(__LOGGER__))
                 for (var_name, val) in zip(var_names, vals)
-                    logger_ = haskey(logger_, var_name) ? error("Already defined key: $(var_name)") : setindex!!(logger_, val, var_name)
+                    logger_ = haskey(logger_, var_name) ? error("Already defined key: $(var_name)") : $setindex!!(logger_, val, var_name)
                 end
                 $(esc(__LOGGER__)) = logger_
                 $(esc(expr))
@@ -141,7 +141,7 @@ macro log(__LOGGER__, expr)
                 local val = $(esc(expr.args[2]))
                 local var_name = $((expr.args[1],))[1]
                 local logger_ = $(esc(__LOGGER__))
-                logger_ = haskey(logger_, var_name) ? error("Already defined key: $(var_name)") : setindex!!(logger_, val, var_name)
+                logger_ = haskey(logger_, var_name) ? error("Already defined key: $(var_name)") : $setindex!!(logger_, val, var_name)
                 $(esc(__LOGGER__)) = logger_
                 $(esc(expr))
             end
@@ -152,7 +152,7 @@ macro log(__LOGGER__, expr)
             local var_names = $(esc((expr.args)))
             local logger_ = $(esc(__LOGGER__))
             for (var_name, val) in zip(var_names, vals)
-                logger_ = haskey(logger_, var_name) ? error("Already defined key: $(var_name)") : setindex!!(logger_, val, var_name)
+                logger_ = haskey(logger_, var_name) ? error("Already defined key: $(var_name)") : $setindex!!(logger_, val, var_name)
             end
             $(esc(__LOGGER__)) = logger_
             $(esc(expr))
@@ -209,9 +209,9 @@ macro nested_log(__LOGGER__, symbol, expr)
                 logger_ = $recursive_merge([logger_, __TMP__]...)
             else
                 if haskey(logger_, $symbol)
-                    logger_ = setindex!!(logger_, $recursive_merge([logger_[$symbol], __TMP__]...), $symbol)
+                    logger_ = $setindex!!(logger_, $recursive_merge([logger_[$symbol], __TMP__]...), $symbol)
                 else
-                    logger_ = setindex!!(logger_, __TMP__, $symbol)
+                    logger_ = $setindex!!(logger_, __TMP__, $symbol)
                 end
             end
             $(__LOGGER__) = logger_
@@ -229,9 +229,9 @@ macro nested_log(__LOGGER__, symbol, expr)
                 logger_ = $recursive_merge([logger_, __TMP__]...)
             else
                 if haskey(logger_, $symbol)
-                    logger_ = setindex!!(logger_, $recursive_merge([logger_[$symbol], __TMP__]...), $symbol)
+                    logger_ = $setindex!!(logger_, $recursive_merge([logger_[$symbol], __TMP__]...), $symbol)
                 else
-                    logger_ = setindex!!(logger_, $_expr, $symbol)
+                    logger_ = $setindex!!(logger_, $_expr, $symbol)
                 end
             end
             $(__LOGGER__) = logger_
@@ -247,9 +247,9 @@ macro nested_log(__LOGGER__, symbol, expr)
                 logger_ = $recursive_merge([logger_, __TMP__]...)  # 'cause it is not in-place.
             else
                 if haskey(logger_, $symbol)
-                    logger_ = setindex!!(logger_, $recursive_merge([logger_[$symbol], __TMP__]...), $symbol)
+                    logger_ = $setindex!!(logger_, $recursive_merge([logger_[$symbol], __TMP__]...), $symbol)
                 else
-                    logger_ = setindex!!(logger_, __TMP__, $symbol)
+                    logger_ = $setindex!!(logger_, __TMP__, $symbol)
                 end
             end
             $(__LOGGER__) = logger_
@@ -265,9 +265,9 @@ macro nested_log(__LOGGER__, symbol, expr)
                 logger_ = $recursive_merge([logger_, __TMP__]...)  # 'cause it is not in-place.
             else
                 if haskey(logger_, $symbol)
-                    logger_ = setindex!!(logger_, $recursive_merge([logger_[$symbol], __TMP__]...), $symbol)
+                    logger_ = $setindex!!(logger_, $recursive_merge([logger_[$symbol], __TMP__]...), $symbol)
                 else
-                    logger_ = setindex!!(logger_, __TMP__, $symbol)
+                    logger_ = $setindex!!(logger_, __TMP__, $symbol)
                 end
             end
             $(__LOGGER__) = logger_
