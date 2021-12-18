@@ -9,7 +9,8 @@ and it uses SimulationLogger.jl as a main logging tool. You can find real exampl
 ## !!NOTICE!! Breaking changes in v0.3.0
 - The privileged name of data logger is now changed from `__LOGGER_DICT__` to `__LOGGER__`.
 - The type of data container, i.e., `typeof(__LOGGER__)` is now changed to be `NamedTuple`.
-    - For Zygote.jl-compatible data logging; see [DiffEqFlux.jl, #660](https://github.com/SciML/DiffEqFlux.jl/issues/660).
+    - For Zygote.jl-compatible data logging.
+    - Unfortunately, it is hard to do for now. See [DiffEqFlux.jl, #662](https://github.com/SciML/DiffEqFlux.jl/issues/662#issuecomment-997180871).
 
 
 # TL; DR: example code
