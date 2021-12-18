@@ -5,6 +5,15 @@ SimulationLogger.jl is a package providing convenient logging tools for [Differe
 - [FlightSims.jl](https://github.com/JinraeKim/FlightSims.jl) is a general-purpose numerical simulator,
 and it uses SimulationLogger.jl as a main logging tool. You can find real examples about **how to use this package** in FlightSims.jl.
 
+
+## !!NOTICE!! Breaking changes in v0.3.0
+- The privileged name of data logger is now changed from `__LOGGER_DICT__` to `__LOGGER__`.
+- The type of data container, i.e., `typeof(__LOGGER__)` is now changed to be `NamedTuple`.
+    - For Zygote.jl-compatible data logging.
+        - See `test/macros.jl`.
+        - Unfortunately, it is hard to integrate with DiffEqFlux.jl for now. See [DiffEqFlux.jl, #662](https://github.com/SciML/DiffEqFlux.jl/issues/662#issuecomment-997180871).
+
+
 # TL; DR: example code
 ## Example 1: typical usage
 See [FlightSims.jl](https://github.com/JinraeKim/FlightSims.jl) for details.
@@ -20,7 +29,7 @@ using Test
 
 function test()
     @Loggable function dynamics!(dx, x, p, t; u)
-        @onlylog state, input = x, u  # __LOGGER_DICT__[:state] = x, __LOGGER_DICT__[:input] = u
+        @onlylog state, input = x, u  # __LOGGER__.state = x, __LOGGER__.input = u
         dx .= u
     end
     @Loggable function custom_control(x)
@@ -28,16 +37,16 @@ function test()
         -a*x
     end
     @Loggable function feedback_dynamics!(dx, x, p, t)
-        @onlylog time = t  # __LOGGER_DICT__[:time] = t
-        @log x, t  # __LOGGER_DICT__[:x] = x
-        u = @nested_log custom_control(x)  # __LOGGER_DICT__[:a] = 1
-        @log u  # __LOGGER_DICT__[:u] = -a*x
+        @onlylog time = t  # __LOGGER__.time = t
+        @log x, t  # __LOGGER__.x = x
+        u = @nested_log custom_control(x)  # __LOGGER__.a = 1
+        @log u  # __LOGGER__.u = -a*x
         @nested_log :linear x
         @nested_log :linear dynamics!(dx, x, p, t; u=u)
     end
     t0, tf = 0.0, 0.1
     Δt = 0.01
-    saved_values = SavedValues(Float64, Dict)
+    saved_values = SavedValues(Float64, NamedTuple)
     cb = CallbackSet()
     if hasmethod(feedback_dynamics!, Tuple{Any, Any, Any, Any, __LOG_INDICATOR__})
         # to avoid undefined error when not adding @Loggable
@@ -128,32 +137,32 @@ This macro logs (possibly) multiple data in a nested sense.
 1. nested log with specified name
 ```julia
 @Loggable function dynamics!(dx, x, p, t)
-    @log state = x  # __LOGGER_DICT__[:state] = x
+    @log state = x  # __LOGGER__.state = x
     dx .= -x
 end
 
 @Loggable function feedback_dynamics!(dx, x, p, t)
-    @log time = t  # __LOGGER_DICT__[:time] = t
-    @nested_log :linear dynamics!(dx, x, p, t)  # __LOGGER_DICT__[:linear] = Dict(:state => x)
+    @log time = t  # __LOGGER__.time = t
+    @nested_log :linear dynamics!(dx, x, p, t)  # __LOGGER__.linear = (; state = x)
 end
 ```
 2. nested log with no name
 ```julia
 @Loggable function dynamics!(dx, x, p, t)
-    @log state = x  # __LOGGER_DICT__[:state] = x
+    @log state = x  # __LOGGER__.state = x
     dx .= -x
 end
 
 @Loggable function feedback_dynamics!(dx, x, p, t)
-    @log time = t  # __LOGGER_DICT__[:time] = t
-    @nested_log dynamics!(dx, x, p, t)  # __LOGGER_DICT__[:state] = x
+    @log time = t  # __LOGGER__.time = t
+    @nested_log dynamics!(dx, x, p, t)  # __LOGGER__.state = x
 end
 ```
 3. `@nested_log` with assignment
 ```julia
 @Loggable function dynamics!(dx, x, p, t; u)
-    @log state = x  # __LOGGER_DICT__[:state] = x
-    @log input = u  # __LOGGER_DICT__[:input] = u
+    @log state = x  # __LOGGER__.state = x
+    @log input = u  # __LOGGER__.input = u
     dx .= u
 end
 
@@ -163,9 +172,9 @@ end
 end
 
 @Loggable function feedback_dynamics!(dx, x, p, t)
-    @log time = t  # __LOGGER_DICT__[:time] = t
-    u = @nested_log control(x)  # __LOGGER_DICT__[:a] = 1
-    @nested_log dynamics!(dx, x, p, t; u)  # __LOGGER_DICT__[:state] = x
+    @log time = t  # __LOGGER__.time = t
+    u = @nested_log control(x)  # __LOGGER__.a = 1
+    @nested_log dynamics!(dx, x, p, t; u)  # __LOGGER__.state = x
 end
 ```
 
@@ -174,7 +183,7 @@ This macro logs (possibly) multiple data in a nested sense **only when logging d
 
 
 # NOTICE
-- `__LOGGER_DICT__` is a privileged name to contain variables annotated by logging macros. **DO NOT USE THIS NAME IN USUAL CASE**.
+- `__LOGGER__` is a privileged name to contain variables annotated by logging macros. **DO NOT USE THIS NAME IN USUAL CASE**.
 - This package supports only [**in-place** method](https://diffeq.sciml.ai/stable/basics/problem/#In-place-vs-Out-of-Place-Function-Definition-Forms) of DifferentialEquations.jl.
 
 

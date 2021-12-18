@@ -1,14 +1,16 @@
 name = "SimulationLogger"
 uuid = "0f3b6f24-f534-4b11-a614-00dcf4ece10c"
 authors = ["JinraeKim <kjl950403@gmail.com> and contributors"]
-version = "0.2.2"
+version = "0.3.0"
 
 [deps]
+BangBang = "198e06fe-97b7-11e9-32a5-e1d131e6ad66"
 MacroTools = "1914dd2f-81c6-5fcd-8719-6d5c9610ff09"
 
 [compat]
-julia = "1"
+BangBang = "0.3"
 MacroTools = "0.5"
+julia = "1"
 
 [extras]
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
