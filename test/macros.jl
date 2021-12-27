@@ -95,4 +95,6 @@ end
     w
 end
 
-main()
+@testset "macros" begin
+    main()
+end
